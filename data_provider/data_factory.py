@@ -1,5 +1,5 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Solar, Dataset_PEMS, \
-    Dataset_Pred
+    Dataset_Pred, DroneFlightDataset
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -10,8 +10,8 @@ data_dict = {
     'Solar': Dataset_Solar,
     'PEMS': Dataset_PEMS,
     'custom': Dataset_Custom,
+    'DroneTraj': DroneFlightDataset,  # Register the drone flight dataset
 }
-
 
 def data_provider(args, flag):
     Data = data_dict[args.data]

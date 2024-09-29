@@ -7,7 +7,167 @@ from sklearn.preprocessing import StandardScaler
 from utils.timefeatures import time_features
 import warnings
 
+import joblib  # For saving and loading the scaler
+
+
 warnings.filterwarnings('ignore')
+
+
+## New Dataset loader for drone trajectories
+class DroneFlightDataset(Dataset):
+    def __init__(self, root_path, data_path=None, flag='train', size=None,
+                 features='M', target=None, scale=True, timeenc=0, freq='h'):
+        """
+        Args:
+            root_path (str): Path to the folder containing drone CSV files.
+            flag (str): 'train', 'val', or 'test' to determine the data split.
+            size (list): [seq_len, label_len, pred_len].
+            scale (bool): Whether to normalize the data.
+            timeenc (int): Not used in drone data, but kept for consistency.
+            freq (str): Not used in drone data, but kept for consistency.
+        """
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+
+        self.seq_len = size[0]
+        self.label_len = size[1]
+        self.pred_len = size[2]
+        self.root_path = root_path
+        self.flag = flag
+
+        # Load all flight data as a list of dataframes, each representing a single flight
+        self.all_flights = self._load_flight_data()
+        if len(self.all_flights) == 0:
+            print("--------------Dataset is empty------------")
+
+        # Split each flight's data into train, validation, and test sets
+        self.flight_splits = self._split_flights()
+
+        # Create or load a scaler for normalization
+        if self.scale:
+            self._setup_scaler()
+
+        # Apply the same scaler to all datasets (train, val, test) if normalization is required
+        if self.scale:
+            self._apply_scaler()
+
+    def _setup_scaler(self):
+        """Create or load a fitted scaler based on the dataset flag."""
+        scaler_path = os.path.join(self.root_path, 'drone_scaler.pkl')
+
+        if self.flag == 'train':
+            # Fit the scaler on the training data, if it's the training set
+            self.scaler = StandardScaler()
+            self._fit_scaler()
+            joblib.dump(self.scaler, scaler_path)  # Save the fitted scaler
+        else:
+            # Load the fitted scaler for validation and test sets
+            if os.path.exists(scaler_path):
+                self.scaler = joblib.load(scaler_path)
+            else:
+                raise FileNotFoundError(f"Scaler not found at {scaler_path}. Ensure the scaler is fitted during training.")
+
+    def _load_flight_data(self):
+        """Load all flights from individual CSV files and store them as separate dataframes."""
+        flight_data = []
+        min_length = self.seq_len + self.pred_len  # Minimum length required for each flight
+
+        for csv_file in os.listdir(self.root_path):
+            if csv_file.endswith('.csv'):
+                df = pd.read_csv(os.path.join(self.root_path, csv_file))
+                df = df[['timestamp', 'tx', 'ty', 'tz', 'vx', 'vy', 'vz']]
+
+                if len(df) >= min_length:
+                    flight_data.append(df)
+                else:
+                    print(f"Skipping flight {csv_file}: length={len(df)}, required minimum length={min_length}")
+
+        print(f"Loaded {len(flight_data)} valid flights.")
+        return flight_data  # Each flight remains as a separate dataframe
+
+    def _split_flights(self):
+        """Split each flight into train, validation, and test based on the flag."""
+        flight_splits = []
+        for flight in self.all_flights:
+            train_size = int(0.7 * len(flight))
+            val_size = int(0.2 * len(flight))
+            test_size = len(flight) - train_size - val_size
+
+            if self.flag == 'train':
+                flight_split = flight[:train_size]
+            elif self.flag == 'val':
+                flight_split = flight[train_size:train_size + val_size]
+            elif self.flag == 'test':
+                flight_split = flight[train_size + val_size:]
+
+            # Only add the split if it's long enough for seq_len + pred_len
+            if len(flight_split) >= self.seq_len + self.pred_len:
+                flight_splits.append(flight_split)
+            else:
+                print(f"Flight {flight.index[0]}: len(flight)={len(flight_split)}, valid_length={len(flight_split) - self.seq_len - self.pred_len}")
+
+        print(f"Total dataset length: {sum(len(flight) for flight in flight_splits)}")
+        return flight_splits
+
+    def _fit_scaler(self):
+        """Fit the scaler on the training data from all flights."""
+        combined_train_data = pd.concat(self.flight_splits)  # Combine all training data from flights
+        self.scaler.fit(combined_train_data[['tx', 'ty', 'tz', 'vx', 'vy', 'vz']])
+
+    def _apply_scaler(self):
+        """Apply the same scaler to normalize the data."""
+        for i, flight_split in enumerate(self.flight_splits):
+            self.flight_splits[i][['tx', 'ty', 'tz', 'vx', 'vy', 'vz']] = self.scaler.transform(
+                flight_split[['tx', 'ty', 'tz', 'vx', 'vy', 'vz']]
+            )
+
+    def inverse_transform(self, predictions):
+        """De-normalize the predictions using the fitted scaler."""
+        return self.scaler.inverse_transform(predictions)
+
+    def __len__(self):
+        """Return the total number of sequences across all flights."""
+        total_len = 0
+        for flight in self.flight_splits:
+            total_len += len(flight) - self.seq_len - self.pred_len + 1
+        return total_len
+
+    def __getitem__(self, idx):
+        """Retrieve sequences only within a single flight."""
+        flight_idx = 0
+        while flight_idx < len(self.flight_splits) and idx >= len(self.flight_splits[flight_idx]) - self.seq_len - self.pred_len + 1:
+            idx -= len(self.flight_splits[flight_idx]) - self.seq_len - self.pred_len + 1
+            flight_idx += 1
+
+        # Ensure the flight index is within the valid range
+        if flight_idx >= len(self.flight_splits):
+            raise IndexError(f"Index out of range for flight_splits. flight_idx={flight_idx}, len(flight_splits)={len(self.flight_splits)}")
+
+        flight = self.flight_splits[flight_idx]
+        start = idx
+        end = start + self.seq_len
+        label_start = end - self.label_len
+        label_end = label_start + self.label_len + self.pred_len
+
+        # Ensure the data slice is within bounds
+        if label_end > len(flight):
+            raise IndexError(f"Label end exceeds flight length. label_end={label_end}, len(flight)={len(flight)}")
+
+        # Input sequence (position and velocity features)
+        seq_x = flight.iloc[start:end][['tx', 'ty', 'tz', 'vx', 'vy', 'vz']].values
+        # Target sequence (next position and velocity)
+        seq_y = flight.iloc[label_start:label_end][['tx', 'ty', 'tz', 'vx', 'vy', 'vz']].values
+
+        # No time-based marking features are needed for drone data
+        return (
+            torch.tensor(seq_x, dtype=torch.float32),  # Input features
+            torch.tensor(seq_y, dtype=torch.float32),  # Target output features
+            torch.zeros((seq_x.shape[0], 1), dtype=torch.float32),  # Placeholder for input time marking
+            torch.zeros((seq_y.shape[0], 1), dtype=torch.float32)   # Placeholder for target time marking
+        )
 
 
 class Dataset_ETT_hour(Dataset):

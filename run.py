@@ -5,6 +5,9 @@ from experiments.exp_long_term_forecasting_partial import Exp_Long_Term_Forecast
 import random
 import numpy as np
 
+import joblib  # For loading the saved scaler
+
+
 if __name__ == '__main__':
     fix_seed = 2023
     random.seed(fix_seed)

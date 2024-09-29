@@ -46,7 +46,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float()
 
-                if 'PEMS' in self.args.data or 'Solar' in self.args.data:
+                if 'PEMS' in self.args.data or 'Solar' in self.args.data or 'DroneTraj' in self.args.data:
                     batch_x_mark = None
                     batch_y_mark = None
                 else:
