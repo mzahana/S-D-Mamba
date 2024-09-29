@@ -11,7 +11,7 @@ python -u run.py \
   --is_training 1 \
   --root_path ./dataset/drone_traj/ \
   --data_path drone_flight_data.txt \
-  --model_id drone_traj_exp_40_20 \
+  --model_id drone_traj_exp_20_10 \
   --model $model_name \
   --data DroneTraj \
   --features M \

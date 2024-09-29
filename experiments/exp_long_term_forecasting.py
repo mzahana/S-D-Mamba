@@ -113,7 +113,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 model_optim.zero_grad()
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
-                if 'PEMS' in self.args.data or 'Solar' in self.args.data:
+                if 'PEMS' in self.args.data or 'Solar' in self.args.data or 'DroneTraj' in self.args.data:
                     batch_x_mark = None
                     batch_y_mark = None
                 else:
@@ -222,7 +222,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 #     noise = torch.randn(1, 321) * epsilon
                 #     perturbed_tensor[:, time_point, :] += noise.float().to(self.device)
                 # batch_x += perturbed_tensor
-                if 'PEMS' in self.args.data or 'Solar' in self.args.data:
+                if 'PEMS' in self.args.data or 'Solar' in self.args.data or 'DroneTraj' in self.args.data:
                     batch_x_mark = None
                     batch_y_mark = None
                 else:
