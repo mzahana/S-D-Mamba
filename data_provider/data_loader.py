@@ -92,7 +92,7 @@ class DroneFlightDataset(Dataset):
         """Split each flight into train, validation, and test based on the flag."""
         flight_splits = []
         for flight in self.all_flights:
-            train_size = int(0.7 * len(flight))
+            train_size = int(0.6 * len(flight))
             val_size = int(0.2 * len(flight))
             test_size = len(flight) - train_size - val_size
 
