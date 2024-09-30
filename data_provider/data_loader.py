@@ -38,6 +38,8 @@ class DroneFlightDataset(Dataset):
         self.root_path = root_path
         self.flag = flag
 
+        self.split_ratio = [0.5, 0.3, 0.2]
+
         # Load all flight data as a list of dataframes, each representing a single flight
         self.all_flights = self._load_flight_data()
         if len(self.all_flights) == 0:
@@ -73,27 +75,38 @@ class DroneFlightDataset(Dataset):
     def _load_flight_data(self):
         """Load all flights from individual CSV files and store them as separate dataframes."""
         flight_data = []
-        min_length = self.seq_len + self.pred_len  # Minimum length required for each flight
-
+        # Minimum length required for each flight based on the ratios and sequence lengths
+        min_flight_length = int((self.seq_len + self.pred_len) / min(self.split_ratio))
+        
         for csv_file in os.listdir(self.root_path):
             if csv_file.endswith('.csv'):
                 df = pd.read_csv(os.path.join(self.root_path, csv_file))
                 df = df[['timestamp', 'tx', 'ty', 'tz', 'vx', 'vy', 'vz']]
 
-                if len(df) >= min_length:
+                # Check if the flight has enough points
+                if len(df) >= min_flight_length:
                     flight_data.append(df)
                 else:
-                    print(f"Skipping flight {csv_file}: length={len(df)}, required minimum length={min_length}")
+                    print(f"Skipping flight {csv_file}: length={len(df)}, required minimum length={min_flight_length}")
 
         print(f"Loaded {len(flight_data)} valid flights.")
         return flight_data  # Each flight remains as a separate dataframe
 
     def _split_flights(self):
-        """Split each flight into train, validation, and test based on the flag."""
+        """Split each flight into train, validation, and test based on the flag, ensuring each flight is long enough for all splits."""
         flight_splits = []
-        for flight in self.all_flights:
-            train_size = int(0.6 * len(flight))
-            val_size = int(0.2 * len(flight))
+
+        # Calculate the total required length for train, validation, and test
+        # total_required_length = (1 / self.split_ratio[0] + 1 / self.split_ratio[1] + 1 / self.split_ratio[2]) * (self.seq_len + self.pred_len)
+        
+        for i, flight in enumerate(self.all_flights):
+            # # Ensure the flight is long enough for train, validation, and test
+            # if len(flight) < total_required_length:
+            #     print(f"Skipping flight {i}: length={len(flight)}, required minimum length={total_required_length}")
+            #     continue
+
+            train_size = int(self.split_ratio[0] * len(flight))
+            val_size = int(self.split_ratio[1] * len(flight))
             test_size = len(flight) - train_size - val_size
 
             if self.flag == 'train':
@@ -103,14 +116,15 @@ class DroneFlightDataset(Dataset):
             elif self.flag == 'test':
                 flight_split = flight[train_size + val_size:]
 
-            # Only add the split if it's long enough for seq_len + pred_len
+            # Ensure the data slice is long enough for seq_len + pred_len
             if len(flight_split) >= self.seq_len + self.pred_len:
                 flight_splits.append(flight_split)
             else:
-                print(f"Flight {flight.index[0]}: len(flight)={len(flight_split)}, valid_length={len(flight_split) - self.seq_len - self.pred_len}")
+                print(f"Flight {i}: len(flight)={len(flight_split)}, valid_length={len(flight_split) - self.seq_len - self.pred_len}")
 
         print(f"Total dataset length: {sum(len(flight) for flight in flight_splits)}")
         return flight_splits
+
 
     def _fit_scaler(self):
         """Fit the scaler on the training data from all flights."""
