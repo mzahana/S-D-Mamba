@@ -11,13 +11,13 @@ python -u run.py \
   --is_training 1 \
   --root_path ./dataset/drone_traj/ \
   --data_path drone_flight_data.txt \
-  --model_id drone_traj_exp_20_10 \
+  --model_id drone_traj_exp_40_20 \
   --model $model_name \
   --data DroneTraj \
   --features M \
-  --seq_len 20 \
-  --pred_len 10 \
-  --label_len 10 \
+  --seq_len 40 \
+  --pred_len 20 \
+  --label_len 20 \
   --e_layers 2 \
   --enc_in 6 \
   --dec_in 6 \
@@ -25,7 +25,7 @@ python -u run.py \
   --des 'Drone trajectory experiment' \
   --d_model 512 \
   --d_ff 512 \
-  --d_state 2 \
+  --d_state 6 \
   --train_epochs 5 \
   --learning_rate 0.0001 \
   --itr 1
